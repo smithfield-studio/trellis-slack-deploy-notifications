@@ -1,5 +1,5 @@
 galaxy_info:
-  description: Sends deployment notifications to a Slack before & after deploys via Trellis.
+  description: Sends notifications to Slack before & after deployment via Trellis.
   license: MIT
   min_ansible_version: 2.6
   platforms:

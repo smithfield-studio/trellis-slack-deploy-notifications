@@ -1,6 +1,6 @@
 # Trellis Slack Deploy Notifications
 
-Sends deployment notifications to a Slack before & after deploys via [Trellis](https://github.com/roots/trellis). Forked from [trellis-slack-webhook-notify-during-deploy](https://github.com/ItinerisLtd/trellis-slack-webhook-notify-during-deploy).
+Sends notifications to Slack before & after deployments via [Trellis](https://github.com/roots/trellis). Forked from [trellis-slack-webhook-notify-during-deploy](https://github.com/ItinerisLtd/trellis-slack-webhook-notify-during-deploy).
 
 ## Requirements
 
@@ -15,7 +15,7 @@ Sends deployment notifications to a Slack before & after deploys via [Trellis](h
 
 ## Installation
 
-Add the role to `galaxy.yml` + [check for latest version](https://github.com/smithfield-studio/trellis-slack-deploy-notifications/releases).
+Add the role to `galaxy.yml` + [check for the latest version](https://github.com/smithfield-studio/trellis-slack-deploy-notifications/releases).
 
 ```yaml
 ---
@@ -34,11 +34,9 @@ trellis galaxy install
 
 ## Update Deploy Hooks
 
-Add the start & success tasks to the `deploy_before` & `deploy_after` [deploy hooks](https://roots.io/trellis/docs/deploys/#hooks):
+Add the start & success tasks to the `deploy_before` & `deploy_after` [deploy hooks](https://roots.io/trellis/docs/deploys/#hooks) in `roles/deploy/defaults/main.yml`.
 
 ```yaml
-# roles/deploy/defaults/main.yml
-
 deploy_before:
   - '{{ playbook_dir }}/vendor/roles/trellis-slack-deploy-notifications/tasks/deploy_start.yml'
 
@@ -51,8 +49,6 @@ deploy_after:
 Add your Slack webhook token(s) (end of the webhook URL) and channel into `group_vars/{environment}/vault.yml`
 
 ```yaml
-# group_vars/{environment}/vault.yml
-
 vault_wordpress_sites:
   example.com.au:
     slack_deploy_token:
