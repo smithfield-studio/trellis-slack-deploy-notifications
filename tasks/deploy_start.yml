@@ -3,7 +3,7 @@
   slack:
     token: "{{ slack_deploy_token }}"
     attachments:
-      - text: "*{{ lookup('pipe', 'git config user.name') }}* has started deploying {{ site }} to *<https://{{ project.site_hosts | map(attribute='canonical') | first }}|{{ env }}>*"
+      - text: "*{{ lookup('pipe', 'git config user.name') }}* has started deploying *{{ site }}* to *<https://{{ project.site_hosts | map(attribute='canonical') | first }}|{{ env }}>*"
         color: warning
   with_items: "{{ vault_wordpress_sites[site].slack_deploy_token }}"
   loop_control:
