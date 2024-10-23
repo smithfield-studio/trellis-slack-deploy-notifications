@@ -1,23 +1,33 @@
 ---
-- name: Get slack & git user info
+- name: Set ENV & Git vars
   set_fact:
-    target_env_url: "https://{{ project.site_hosts | map(attribute='canonical') | first }}|{{ site }} {{ env }}"
     git_username: "{{ lookup('pipe', 'git config user.name') }}"
+    branch_name: "{{ lookup('pipe', 'git branch --show-current') }}"
+    target_env_url: "https://{{ project.site_hosts | map(attribute='canonical') | first }}|{{ site }} {{ env }}"
+    commit_sha: "{{ git_clone.after }}"
     using_github: "{{ project_git_repo.find('github') != -1 }}"
   ignore_errors: yes
 
-- name: Get github commit url
+- name: Set Github commit URL
   set_fact:
     github_commit_url: "https://github.com/{{ project_git_repo | regex_replace('(?:^git@github.com:|https:\/\/github.com\/)(.*).git$', '\\1') }}/commit/{{ git_clone.after }}"
   when:
     - using_github
   ignore_errors: yes
 
+- name: Override commit_sha with link, if GitHub commit URL
+  set_fact:
+    commit_sha: "<{{ github_commit_url }}|commit>"
+  when:
+    - using_github
+    - github_commit_url | length > 0
+  ignore_errors: yes
+
 - name: Send successful deployment notification to Slack
   slack:
     token: "{{ slack_deploy_token }}"
     attachments:
-      - text: "*{{ git_username }}* deployed `{{ lookup('pipe', 'git branch --show-current') }}` branch to *<{{ target_env_url }}>* {% if using_github %} [<{{ github_commit_url }}|commit>] {% else %} [{{ git_clone.after }}] {% endif %}"
+      - text: "*{{ git_username }}* deployed `{{ branch_name }}` branch to *<{{ target_env_url }}>* [{{ commit_sha }}]"
         color: good
   with_items: "{{ vault_wordpress_sites[site].slack_deploy_token }}"
   loop_control:

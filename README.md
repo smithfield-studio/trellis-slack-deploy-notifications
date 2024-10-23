@@ -57,6 +57,14 @@ vault_wordpress_sites:
     env: #...
 ```
 
+## Running via GitHub Actions / CI
+See [setup-trellis-cli](https://github.com/roots/setup-trellis-cli) to get the workflow setup. Then add the `CI_JOB_URL` to env var to your deploy workflow to include a link back to the running GitHub Action in the start notification.
+
+```yaml
+name: Deploy site
+env:
+  CI_JOB_URL: ${{ github.event.repository.html_url }}/actions/runs/${{ github.run_id }}
+```
 
 ## FAQs
 
