@@ -2,9 +2,9 @@
 - name: Set ENV & Git vars
   set_fact:
     git_username: "{{ lookup('pipe', 'git config user.name') }}"
-    branch_name: lookup('pipe', 'git branch --show-current')
+    branch_name: "{{ lookup('pipe', 'git branch --show-current') }}"
     target_env_url: "https://{{ project.site_hosts | map(attribute='canonical') | first }}|{{ site }} {{ env }}"
-    commit_sha: git_clone.after
+    commit_sha: "{{ git_clone.after }}"
     using_github: "{{ project_git_repo.find('github') != -1 }}"
   ignore_errors: yes
 

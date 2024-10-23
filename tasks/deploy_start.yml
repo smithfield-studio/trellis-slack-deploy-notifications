@@ -2,7 +2,7 @@
 - name: Set ENV & Git vars
   set_fact:
     git_username: "{{ lookup('pipe', 'git config user.name') }}"
-    branch_name: lookup('pipe', 'git branch --show-current')
+    branch_name: "{{ lookup('pipe', 'git branch --show-current') }}"
     target_env_url: "https://{{ project.site_hosts | map(attribute='canonical') | first }}|{{ site }} {{ env }}"
     ci_job_url: "{{ lookup('env', 'CI_JOB_URL') }}"
   ignore_errors: yes
