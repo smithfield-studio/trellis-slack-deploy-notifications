@@ -17,7 +17,7 @@
 
 - name: Override commit_sha with link, if GitHub commit URL
   set_fact:
-    commit_sha: "<{{ github_commit_url }}|commit>"
+    commit_sha: "<{{ github_commit_url }}|📝>"
   when:
     - using_github
     - github_commit_url | length > 0
@@ -27,7 +27,7 @@
   slack:
     token: "{{ slack_deploy_token }}"
     attachments:
-      - text: "*{{ git_username }}* deployed `{{ branch_name }}` branch to *<{{ target_env_url }}>* [{{ commit_sha }}]"
+      - text: "*{{ git_username }}* deployed 🔀`{{ branch_name }}` to *<{{ target_env_url }}>* [{{ commit_sha }}]"
         color: good
   with_items: "{{ vault_wordpress_sites[site].slack_deploy_token }}"
   loop_control:
