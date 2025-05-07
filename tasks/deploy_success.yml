@@ -1,4 +1,8 @@
 ---
+- name: Load vars
+  include_vars:
+    file: "{{ playbook_dir }}/vendor/roles/slack-notify/vars/main.yml"
+
 - name: Set ENV & Git vars
   set_fact:
     git_username: "{{ lookup('pipe', 'git config user.name') }}"
