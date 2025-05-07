@@ -27,8 +27,8 @@
   slack:
     token: "{{ slack_deploy_token }}"
     attachments:
-      - text: "*{{ git_username }}* deployed 🔀`{{ branch_name }}` to *<{{ target_env_url }}>* [{{ commit_sha }}]"
-        color: good
+      - text: "*{{ git_username }}* {{ slack_notify_config.deploy_success_text }} `{{ branch_name }}` to *<{{ target_env_url }}>* [{{ commit_sha }}]"
+        color: "{{ slack_notify_config.deploy_success_colour }}"
   with_items: "{{ vault_wordpress_sites[site].slack_deploy_token }}"
   loop_control:
     loop_var: slack_deploy_token

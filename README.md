@@ -66,6 +66,33 @@ env:
   CI_JOB_URL: ${{ github.event.repository.html_url }}/actions/runs/${{ github.run_id }}
 ```
 
+## Customise deploy messages
+
+You can choose to customise the deploy messages globally or per project. If you set both, the project config will take precedence. For each task (deploy start or deploy success) you can customise two elements: `text` and `colour`.
+
+To set globally, in `group_vars/all/helpers.yml`:
+
+```yaml
+slack_notify:
+  deploy_start_text: "has started deploying 🌱"
+  deploy_start_colour: "normal" # see https://docs.ansible.com/ansible/latest/collections/community/general/slack_module.html#parameter-color for accepted colours.
+  deploy_success_text: "has successfully deployed 🌿"
+  deploy_success_colour: "good"
+```
+
+To set per project, in `group_vars/{environment}/wordpress_sites.yml`
+
+```yaml
+wordpress_sites:
+  example.com.au:
+    slack_notify:
+      deploy_start_text: "is kicking up code from"
+```
+
+With both of the above examples set, the deploy start message would be taken from the project config:
+
+> **Dale Grant** is kicking up code from `master` to **example.com.au staging**
+
 ## FAQs
 
 ### How do I get a Slack Webhook URL?
