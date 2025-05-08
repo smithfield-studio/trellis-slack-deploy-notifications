@@ -11,7 +11,7 @@ Sends notifications to Slack before & after deployments via [Trellis](https://gi
 
 ## Screenshots
 
-![Deployment Screenshot](./screenshot.jpg)
+![Slack deployment screenshot](./screenshot.png)
 
 ## Installation
 
