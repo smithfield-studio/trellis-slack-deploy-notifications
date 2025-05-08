@@ -1,0 +1,7 @@
+slack_notify_config_default:
+  deploy_start_text: "deploying 🔀"
+  deploy_start_colour: "warning"
+  deploy_success_text: "deployed 🔀"
+  deploy_success_colour: "good"
+
+slack_notify_config: "{{ slack_notify_config_default | combine(slack_notify | combine(project.slack_notify | default({}))) }}"
