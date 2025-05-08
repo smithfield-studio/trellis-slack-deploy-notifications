@@ -1,7 +1,7 @@
 ---
 - name: Load vars
   include_vars:
-    file: "{{ playbook_dir }}/vendor/roles/slack-notify/vars/main.yml"
+    file: "{{ playbook_dir }}/vendor/roles/trellis-slack-deploy-notifications/vars/main.yml"
 
 - name: Set ENV & Git vars
   set_fact:
