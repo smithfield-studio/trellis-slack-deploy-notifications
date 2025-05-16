@@ -6,7 +6,6 @@
 - name: Set ENV & Git vars
   set_fact:
     git_username: "{{ lookup('pipe', 'git config user.name') }}"
-    branch_name: "{{ lookup('pipe', 'git branch --show-current') }}"
     target_env_url: "https://{{ project.site_hosts | map(attribute='canonical') | first }}|{{ site }} {{ env }}"
     commit_sha: "{{ git_clone.after }}"
     using_github: "{{ project_git_repo.find('github') != -1 }}"
@@ -31,7 +30,7 @@
   slack:
     token: "{{ slack_deploy_token }}"
     attachments:
-      - text: "*{{ git_username }}* {{ slack_notify_config.deploy_success_text }} `{{ branch_name }}` to *<{{ target_env_url }}>* [{{ commit_sha }}]"
+      - text: "*{{ git_username }}* {{ slack_notify_config.deploy_success_text }} `{{ project_version }}` to *<{{ target_env_url }}>* [{{ commit_sha }}]"
         color: "{{ slack_notify_config.deploy_success_colour }}"
   with_items: "{{ vault_wordpress_sites[site].slack_deploy_token }}"
   loop_control:
