@@ -4,4 +4,4 @@ slack_notify_config_default:
   deploy_success_text: "deployed 🔀"
   deploy_success_colour: "good"
 
-slack_notify_config: "{{ slack_notify_config_default | combine(slack_notify | combine(project.slack_notify | default({}))) }}"
+slack_notify_config: "{{ slack_notify_config_default | combine(slack_notify | default({}) | combine(project.slack_notify | default({})) ) }}"
