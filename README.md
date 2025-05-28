@@ -23,7 +23,7 @@ roles:
   #...
   - name: trellis-slack-deploy-notifications
     src: https://github.com/smithfield-studio/trellis-slack-deploy-notifications.git
-    version: 1.1.0 # Check for latest version on GitHub
+    version: 1.1.1 # Check for latest version on GitHub
 ```
 
 Ensure you have [Trellis CLI](https://github.com/roots/trellis-cli) installed, then run:
