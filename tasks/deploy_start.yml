@@ -16,11 +16,10 @@
     attachments:
       - text: "*{{ git_username }}* {{ slack_notify_config.deploy_start_text }} `{{ project_version }}` to *<{{ target_env_url }}>* {% if ci_job_url | length > 0 %}[<{{ ci_job_url }}|🔎>]{% endif %}"
         color: "{{ slack_notify_config.deploy_start_colour }}"
-  with_items: "{{ vault_wordpress_sites[site].slack_deploy_token }}"
+  with_items: "{{ slack_deploy_tokens }}"
   loop_control:
     loop_var: slack_deploy_token
-  when:
-    - vault_wordpress_sites[site].slack_deploy_token is defined
-    - vault_wordpress_sites[site].slack_deploy_token | length > 0
+    label: Slack webhook
+  when: slack_deploy_tokens | length > 0
   delegate_to: localhost
   ignore_errors: yes

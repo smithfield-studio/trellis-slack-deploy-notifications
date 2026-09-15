@@ -23,7 +23,7 @@ roles:
   #...
   - name: trellis-slack-deploy-notifications
     src: https://github.com/smithfield-studio/trellis-slack-deploy-notifications.git
-    version: 1.1.1 # Check for latest version on GitHub
+    version: 1.2.0 # Check for latest version on GitHub
 ```
 
 Ensure you have [Trellis CLI](https://github.com/roots/trellis-cli) installed, then run:
@@ -55,6 +55,20 @@ vault_wordpress_sites:
       - xxx/xxx/xxxxx
       - xxx/xxx/xxxxx
     env: #...
+```
+
+### Keeping the token out of the repo
+
+Tokens can also come from a `SLACK_DEPLOY_TOKEN` environment variable (comma-separated for more than one), used alongside any in the vault. Leave `slack_deploy_token` out of `vault.yml` and set the variable where deploys run instead:
+
+- GitHub Actions: add a `SLACK_DEPLOY_TOKEN` repository secret and pass it to the deploy step
+- Local deploys: `export SLACK_DEPLOY_TOKEN=xxx/xxx/xxxxx` in your shell profile
+
+```yaml
+    - name: Deploy
+      env:
+        SLACK_DEPLOY_TOKEN: ${{ secrets.SLACK_DEPLOY_TOKEN }}
+      run: trellis deploy production
 ```
 
 ## Running via GitHub Actions / CI
