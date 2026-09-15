@@ -5,3 +5,7 @@ slack_notify_config_default:
   deploy_success_colour: "good"
 
 slack_notify_config: "{{ slack_notify_config_default | combine( (slack_notify | default({})) | combine(project.slack_notify | default({})) ) }}"
+
+# The site's vault token(s) plus any comma-separated tokens in SLACK_DEPLOY_TOKEN,
+# so a token can live outside the repo (a CI secret, or a developer's shell profile).
+slack_deploy_tokens: "{{ (([vault_wordpress_sites[site].slack_deploy_token | default([])] | flatten) + (lookup('env', 'SLACK_DEPLOY_TOKEN').split(',') | map('trim') | list)) | select | unique | list }}"
