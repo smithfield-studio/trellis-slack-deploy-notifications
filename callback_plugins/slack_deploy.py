@@ -310,7 +310,10 @@ class CallbackModule(CallbackBase):
             self._warn(f'{method} to {payload["channel"]} failed ({e})')
             return None
         if not body.get('ok'):
-            self._warn(f'{method} to {payload["channel"]} failed ({body.get("error")})')
+            error = body.get('error')
+            if body.get('needed'):
+                error += f", needs {body['needed']}, token has {body.get('provided') or 'none'}"
+            self._warn(f'{method} to {payload["channel"]} failed ({error})')
             return None
         return body
 

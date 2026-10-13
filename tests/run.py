@@ -34,6 +34,8 @@ class FakeSlack(BaseHTTPRequestHandler):
             response = {'ok': False, 'error': 'invalid_auth'}
         elif body['channel'] == '#missing':
             response = {'ok': False, 'error': 'channel_not_found'}
+        elif body['channel'] == '#no-scope':
+            response = {'ok': False, 'error': 'missing_scope', 'needed': 'chat:write', 'provided': 'incoming-webhook'}
         elif method == 'chat.update':
             response = {'ok': True, 'channel': body['channel'], 'ts': body['ts']}
         else:
@@ -151,6 +153,11 @@ SCENARIOS = [
     {'name': 'Slack error', 'config': {'channel': '#missing'}, 'warning': 'channel_not_found', 'calls': [
         ('post', '#missing', [START]),
         ('post', '#missing', ['✅']),
+    ]},
+    {'name': 'token without chat:write', 'config': {'channel': '#no-scope'},
+     'warning': 'missing_scope, needs chat:write, token has incoming-webhook', 'calls': [
+        ('post', '#no-scope', [START]),
+        ('post', '#no-scope', ['✅']),
     ]},
     {'name': 'invalid site', 'args': ['-e', 'site=nope.com'], 'calls': []},
     {'name': 'other playbook', 'playbook': 'server.yml', 'calls': []},
