@@ -38,6 +38,7 @@ ROLLBACK_DEFAULTS = {
 GENERIC_ERRORS = ('non-zero return code', 'MODULE FAILURE', 'One or more items failed')
 ANSI = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
 GITHUB_REPO = re.compile(r'^(?:git@github\.com:|ssh://git@github\.com/|https://github\.com/)(.+?)(?:\.git)?/?$')
+DOTENV_TOKEN = re.compile(r'^\s*(?:export\s+)?SLACK_DEPLOY_TOKEN\s*=\s*["\']?([^"\'\s#]*)')
 
 
 def _get(obj, name):
@@ -74,6 +75,23 @@ def _deployer():
     except Exception:
         name = ''
     return name or os.environ.get('GITHUB_ACTOR') or getpass.getuser()
+
+
+def _dotenv_token(folder):
+    """SLACK_DEPLOY_TOKEN from the nearest .env above the playbook, e.g. one in the folder holding every project."""
+    folder = os.path.abspath(folder)
+    while True:
+        try:
+            with open(os.path.join(folder, '.env'), encoding='utf-8') as env:
+                for line in env:
+                    match = DOTENV_TOKEN.match(line)
+                    if match and match.group(1):
+                        return match.group(1)
+        except OSError:
+            pass
+        if os.path.dirname(folder) == folder:
+            return ''
+        folder = os.path.dirname(folder)
 
 
 def _ci_url():
@@ -228,6 +246,7 @@ class CallbackModule(CallbackBase):
             lookup('slack_deploy'),
             lookup('wordpress_sites', site, 'slack_deploy'),
             legacy_token=lookup('vault_wordpress_sites', site, 'slack_deploy_token'),
+            basedir=play._loader.get_basedir(),
         )
         if not self._config:
             return
@@ -240,7 +259,7 @@ class CallbackModule(CallbackBase):
 
         self._notify('start')
 
-    def _build_config(self, defaults, *layers, legacy_token=None):
+    def _build_config(self, defaults, *layers, legacy_token=None, basedir='.'):
         config = dict(defaults, token=None, channel=None)
         for layer in layers:
             if layer is False:
@@ -254,7 +273,7 @@ class CallbackModule(CallbackBase):
                 if isinstance(messages, Mapping):
                     config.update({key: value for key, value in messages.items() if key in defaults and value is not None})
 
-        config['token'] = str(config['token'] or os.environ.get('SLACK_DEPLOY_TOKEN') or '').strip()
+        config['token'] = str(config['token'] or os.environ.get('SLACK_DEPLOY_TOKEN') or _dotenv_token(basedir)).strip()
         config['channels'] = _as_list(config.pop('channel'))
         if not config['token'] and not config['channels']:
             if legacy_token:
@@ -264,7 +283,7 @@ class CallbackModule(CallbackBase):
             self._warn('no channel set, add slack_deploy.channel')
             return None
         if not config['token'].startswith('xox'):
-            self._warn('no Slack bot token (xoxb-...), set SLACK_DEPLOY_TOKEN or slack_deploy.token')
+            self._warn('no Slack bot token (xoxb-...), set SLACK_DEPLOY_TOKEN in the environment or a .env above the project, or slack_deploy.token')
             return None
         return config
 

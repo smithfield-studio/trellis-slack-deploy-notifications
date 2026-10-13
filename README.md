@@ -60,7 +60,29 @@ slack_deploy:
   channel: "#deploys"
 ```
 
-Then make the bot token available to every deploy and rollback, local or CI. Either keep it in the project's vault:
+Then make the bot token available to every deploy and rollback, local or CI. The plugin uses the first of:
+
+1. `slack_deploy.token`, e.g. from the project's vault, set per project, environment or site
+2. `SLACK_DEPLOY_TOKEN` in the environment, e.g. a GitHub Actions secret
+3. `SLACK_DEPLOY_TOKEN` in the nearest `.env` file above the playbook
+
+For local deploys and rollbacks, one `.env` in the folder holding your projects covers all of them:
+
+```sh
+# ~/Sites/.env
+SLACK_DEPLOY_TOKEN=xoxb-...
+```
+
+On GitHub Actions, add a `SLACK_DEPLOY_TOKEN` secret (organisation or repository) and pass it to the deploy step:
+
+```yaml
+    - name: Deploy
+      env:
+        SLACK_DEPLOY_TOKEN: ${{ secrets.SLACK_DEPLOY_TOKEN }}
+      run: trellis deploy production
+```
+
+To use a different token for one project, keep it in the project's vault:
 
 ```yaml
 # group_vars/all/vault.yml
@@ -70,18 +92,6 @@ vault_slack_deploy_token: xoxb-...
 slack_deploy:
   channel: "#deploys"
   token: "{{ vault_slack_deploy_token }}"
-```
-
-Or set `SLACK_DEPLOY_TOKEN` wherever Trellis runs:
-
-- GitHub Actions: add a `SLACK_DEPLOY_TOKEN` secret (organisation or repository) and pass it to the deploy step
-- Local deploys and rollbacks: `export SLACK_DEPLOY_TOKEN=xoxb-...` in your shell profile
-
-```yaml
-    - name: Deploy
-      env:
-        SLACK_DEPLOY_TOKEN: ${{ secrets.SLACK_DEPLOY_TOKEN }}
-      run: trellis deploy production
 ```
 
 Without a token Trellis prints a warning and posts nothing.
@@ -104,7 +114,7 @@ Set `slack_deploy` in `group_vars` (`all` or an environment) and/or per site in 
 | Setting | Value |
 | --- | --- |
 | `channel` | Channel name or ID, or a list of them |
-| `token` | Bot token, defaults to `$SLACK_DEPLOY_TOKEN` |
+| `token` | Bot token, overrides `SLACK_DEPLOY_TOKEN` from the environment or a `.env` |
 | `start` | Text of the message posted when the deploy starts |
 | `success`, `failed`, `cancelled` | Text the message is updated to when the deploy ends |
 | `failed_reply` | Thread reply posted when a deploy fails |

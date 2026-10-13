@@ -119,6 +119,20 @@ SCENARIOS = [
         ('post', '#site', [START]),
         ('update', 'CSITE', ['Shipped main to https://example.com ']),
     ]},
+    {'name': 'vault token beats the environment', 'env': {'SLACK_DEPLOY_TOKEN': 'xoxb-other'},
+     'config': {'channel': '#deploys', 'token': '{{ vault_slack_deploy_token }}'}, 'calls': [
+        ('post', '#deploys', [START]),
+        ('update', 'CDEPLOYS', ['✅']),
+    ]},
+    {'name': 'token from a .env above the project', 'env': {'SLACK_DEPLOY_TOKEN': ''},
+     'dotenv': f'APP=x\nexport SLACK_DEPLOY_TOKEN="{TOKEN}"\n', 'calls': [
+        ('post', '#deploys', [START]),
+        ('update', 'CDEPLOYS', ['✅']),
+    ]},
+    {'name': 'environment beats a .env', 'dotenv': 'SLACK_DEPLOY_TOKEN=xoxb-other\n', 'calls': [
+        ('post', '#deploys', [START]),
+        ('update', 'CDEPLOYS', ['✅']),
+    ]},
     {'name': 'two channels', 'config': {'channel': ['#one', '#two']}, 'calls': [
         ('post', '#one', [START]),
         ('post', '#two', [START]),
@@ -243,7 +257,12 @@ def run(bindir, scenario, root, version):
         # 2.19 replaces signal handlers whenever it starts a worker, so the cancel reaches Ansible as a task failure.
         expected = expected[:1] + [('update', 'CDEPLOYS', ['❌']), ('broadcast', 'CDEPLOYS', ['Failed at'])]
 
-    project = root / scenario['name'].replace(' ', '-').replace(',', '')
+    project = root / scenario['name'].replace(' ', '-').replace(',', '').replace('.', '')
+    if 'dotenv' in scenario:
+        # A .env two folders up, as one in the folder holding every project would be.
+        project.mkdir()
+        (project / '.env').write_text(scenario['dotenv'])
+        project = project / 'site' / 'trellis'
     shutil.copytree(HERE / 'fixture', project)
     if scenario.get('hosts') == 2:
         (project / 'hosts/production').write_text(
