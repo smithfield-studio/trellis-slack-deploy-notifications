@@ -1,0 +1,7 @@
+---
+- name: Provision
+  hosts: web:&{{ env }}
+  gather_facts: false
+  tasks:
+    - name: Ping
+      ping:

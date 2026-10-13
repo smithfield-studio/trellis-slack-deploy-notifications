@@ -1,0 +1,36 @@
+---
+- name: Clone project files
+  git:
+    repo: "{{ fixture_repo }}"
+    dest: "{{ playbook_dir }}/build"
+    version: "{{ project_version }}"
+    force: true
+  register: git_clone
+
+- name: Rescued failure
+  when: scenario_rescue | default(false) | bool
+  block:
+    - name: Fails but is rescued
+      command: /bin/false
+  rescue:
+    - name: Rescue
+      debug:
+        msg: rescued
+
+- name: Ignored failure
+  command: /bin/false
+  ignore_errors: true
+  when: scenario_ignore | default(false) | bool
+
+- name: Run composer install
+  shell: echo "Your requirements could not be resolved to an installable set of packages." >&2; exit 2
+  when: scenario_fail | default(false) | bool
+
+- name: Build assets
+  command: "test {{ item }} != b"
+  loop: [a, b, c]
+  when: scenario_loop_fail | default(false) | bool
+
+- name: Wait to be cancelled
+  command: sleep 60
+  when: scenario_sleep | default(false) | bool

@@ -1,0 +1,23 @@
+---
+# Same play structure as Trellis' deploy.yml.
+- import_playbook: variable-check.yml
+  vars:
+    playbook: deploy.yml
+
+- name: Test Connection
+  hosts: web:&{{ env }}
+  gather_facts: false
+  roles:
+    - connection
+
+- name: Deploy WP site
+  hosts: web:&{{ env }}
+  gather_facts: false
+  pre_tasks:
+    - name: Ensure site is valid
+      delegate_to: localhost
+      fail:
+        msg: "Site `{{ site | default('') }}` is not valid."
+      when: wordpress_sites[site | default('')] is not defined
+  roles:
+    - deploy
