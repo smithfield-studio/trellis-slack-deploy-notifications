@@ -1,0 +1,9 @@
+---
+- name: Ensure necessary variables are defined
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Ensure environment is defined
+      fail:
+        msg: Environment missing.
+      when: env is not defined

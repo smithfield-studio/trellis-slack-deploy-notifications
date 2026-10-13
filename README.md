@@ -1,17 +1,32 @@
 # Trellis Slack Deploy Notifications
 
-Sends notifications to Slack before & after deployments via [Trellis](https://github.com/roots/trellis). Forked from [trellis-slack-webhook-notify-during-deploy](https://github.com/ItinerisLtd/trellis-slack-webhook-notify-during-deploy).
+Posts one Slack message per [Trellis](https://github.com/roots/trellis) deploy or rollback and updates it as it succeeds, fails or is cancelled. Forked from [trellis-slack-webhook-notify-during-deploy](https://github.com/ItinerisLtd/trellis-slack-webhook-notify-during-deploy).
+
+It runs as an Ansible callback plugin rather than deploy hooks, so it sees every task in `deploy.yml` and `rollback.yml`. A failure anywhere (connection test, build, your own hooks, an unreachable host) marks the message as failed and replies in its thread with the task and error.
+
+```
+🟡 Mike Sheppard deploying `main` to example.com production · run
+✅ Mike Sheppard deployed `main` to example.com production · 2m 14s · 02c8ce6 · run
+❌ Mike Sheppard failed deploying `main` to example.com production · 48s · run
+     ↳ Failed at deploy : Run composer install (also sent to the channel)
+⚪ Mike Sheppard cancelled deploying `main` to example.com production · 12s
+↩️ Mike Sheppard rolled back example.com production to `20261012153012` · 21s · run
+```
 
 ## Requirements
 
-- Trellis v1.0.0 or later
+- Trellis with ansible-core 2.16 or later (tested on 2.16 to 2.21)
 - Trellis CLI
-- Ansible v2.6 or later
-- Slack webhook token
+- A Slack app with a bot token
 
-## Screenshots
+## Slack app
 
-![Slack deployment screenshot](./screenshot.png)
+1. Open your app on the ["Your Apps"](https://api.slack.com/apps) page, or create one
+2. Under OAuth & Permissions, add the bot token scopes `chat:write` and `chat:write.public` (posts to public channels without inviting the bot)
+3. Install (or reinstall) the app to the workspace and copy the Bot User OAuth Token (`xoxb-...`)
+4. For a private channel, invite the bot: `/invite @your-bot`
+
+One token covers every project and channel in the workspace.
 
 ## Installation
 
@@ -23,46 +38,51 @@ roles:
   #...
   - name: trellis-slack-deploy-notifications
     src: https://github.com/smithfield-studio/trellis-slack-deploy-notifications.git
-    version: 1.2.0 # Check for latest version on GitHub
+    version: 2.0.0 # Check for latest version on GitHub
 ```
 
-Ensure you have [Trellis CLI](https://github.com/roots/trellis-cli) installed, then run:
+Install it:
 
 ```bash
 trellis galaxy install
 ```
 
-## Update Deploy Hooks
+Add the plugin's folder to the end of `callback_plugins` in `ansible.cfg`:
 
-Add the start & success tasks to the `deploy_before` & `deploy_after` [deploy hooks](https://roots.io/trellis/docs/deploys/#hooks) in `roles/deploy/defaults/main.yml`.
-
-```yaml
-deploy_before:
-  - '{{ playbook_dir }}/vendor/roles/trellis-slack-deploy-notifications/tasks/deploy_start.yml'
-
-#...
-
-deploy_after:
-  - '{{ playbook_dir }}/vendor/roles/trellis-slack-deploy-notifications/tasks/deploy_success.yml'
+```ini
+callback_plugins = ~/.ansible/plugins/callback:/usr/share/ansible/plugins/callback:lib/trellis/plugins/callback:vendor/roles/trellis-slack-deploy-notifications/callback_plugins
 ```
 
-Add your Slack webhook token(s) (end of the webhook URL) and channel into `group_vars/{environment}/vault.yml`
+Set the channel, e.g. in `group_vars/all/main.yml`:
 
 ```yaml
-vault_wordpress_sites:
-  example.com.au:
-    slack_deploy_token:
-      - xxx/xxx/xxxxx
-      - xxx/xxx/xxxxx
-    env: #...
+slack_deploy:
+  channel: "#deploys"
 ```
 
-### Keeping the token out of the repo
+Then make the bot token available to every deploy and rollback, local or CI. The plugin uses the first of:
 
-Tokens can also come from a `SLACK_DEPLOY_TOKEN` environment variable (comma-separated for more than one), used alongside any in the vault. Leave `slack_deploy_token` out of `vault.yml` and set the variable where deploys run instead:
+1. `slack_deploy.token`, e.g. from the project's vault, set per project, environment or site
+2. `SLACK_DEPLOY_TOKEN` in the environment, e.g. a GitHub Actions secret
+3. `SLACK_DEPLOY_TOKEN` in the nearest `.env` file above the playbook
 
-- GitHub Actions: add a `SLACK_DEPLOY_TOKEN` repository secret and pass it to the deploy step
-- Local deploys: `export SLACK_DEPLOY_TOKEN=xxx/xxx/xxxxx` in your shell profile
+For local deploys and rollbacks, one `.env` in the folder holding your projects covers all of them:
+
+```sh
+# ~/Sites/.env
+SLACK_DEPLOY_TOKEN=xoxb-...
+```
+
+Any of the three can be a [1Password secret reference](https://developer.1password.com/docs/cli/secret-references/) instead, so no token is stored on disk and a team shares one item. The plugin reads it with `op read` when a deploy or rollback starts, and 1Password asks for Touch ID when its CLI is locked:
+
+```sh
+# ~/Sites/.env
+SLACK_DEPLOY_TOKEN="op://Shared/Slack Deploy Bot/credential"
+```
+
+This needs the [1Password CLI](https://developer.1password.com/docs/cli/get-started/) (`brew install 1password-cli`) with Settings > Developer > Integrate with 1Password CLI turned on in the 1Password app.
+
+On GitHub Actions, add a `SLACK_DEPLOY_TOKEN` secret (organisation or repository) and pass it to the deploy step:
 
 ```yaml
     - name: Deploy
@@ -71,53 +91,131 @@ Tokens can also come from a `SLACK_DEPLOY_TOKEN` environment variable (comma-sep
       run: trellis deploy production
 ```
 
-## Running via GitHub Actions / CI
-See [setup-trellis-cli](https://github.com/roots/setup-trellis-cli) to get the workflow setup. Then add the `CI_JOB_URL` to env var to your deploy workflow to include a link back to the running GitHub Action in the start notification.
+To use a different token for one project, keep it in the project's vault:
 
 ```yaml
-name: Deploy site
-env:
-  CI_JOB_URL: ${{ github.event.repository.html_url }}/actions/runs/${{ github.run_id }}
+# group_vars/all/vault.yml
+vault_slack_deploy_token: xoxb-...
+
+# group_vars/all/main.yml
+slack_deploy:
+  channel: "#deploys"
+  token: "{{ vault_slack_deploy_token }}"
 ```
 
-## Customise deploy messages
+Without a token Trellis prints a warning and posts nothing.
 
-You can choose to customise the deploy messages globally or per project. If you set both, the project config will take precedence. For each task (deploy start or deploy success) you can customise two elements: `text` and `colour`.
+## GitHub Actions / CI
 
-To set globally, in `group_vars/all/helpers.yml`:
+On GitHub Actions the message links to the workflow run automatically. For other CI, set `CI_JOB_URL` to the job's URL.
+
+The name in each message is `git config user.name`, falling back to `$GITHUB_ACTOR`. Set it in the workflow to show who triggered the run:
 
 ```yaml
-slack_notify:
-  deploy_start_text: "has started deploying 🌱"
-  deploy_start_colour: "normal" # see https://docs.ansible.com/ansible/latest/collections/community/general/slack_module.html#parameter-color for accepted colours.
-  deploy_success_text: "has successfully deployed 🌿"
-  deploy_success_colour: "good"
+    - name: Setup git user
+      run: git config --global user.name "${{ github.triggering_actor }} (via GH)"
 ```
 
-To set per project, in `group_vars/{environment}/wordpress_sites.yml`
+## Configuration
+
+Set `slack_deploy` in `group_vars` (`all` or an environment) and/or per site in `wordpress_sites.yml`. Site settings win.
+
+| Setting | Value |
+| --- | --- |
+| `channel` | Channel name or ID, or a list of them |
+| `token` | Bot token, overrides `SLACK_DEPLOY_TOKEN` from the environment or a `.env` |
+| `start` | Text of the message posted when the deploy starts |
+| `success`, `failed`, `cancelled` | Text the message is updated to when the deploy ends |
+| `failed_reply` | Thread reply posted when a deploy fails |
+| `rollback` | Messages for `trellis rollback`: `start`, `success`, `failed`, `cancelled` and `failed_reply`, or `false` to skip rollbacks |
+
+Set any message to `false` to skip it, or `slack_deploy: false` to turn everything off for a site or environment. With `start` off, the end message is posted as a new message.
+
+The failure reply is also sent to the channel when it replies to an earlier start message, as Slack doesn't notify anyone about edits. Put mentions such as `<!here>` in `failed_reply`, not `failed`.
+
+Failures only, on staging:
 
 ```yaml
+# group_vars/staging/wordpress_sites.yml
 wordpress_sites:
   example.com.au:
-    slack_notify:
-      deploy_start_text: "is kicking up code from"
+    slack_deploy:
+      start: false
+      success: false
+      failed_reply: "<!here> {reason}"
 ```
 
-With both of the above examples set, the deploy start message would be taken from the project config:
+Rollbacks use their own messages, so deploy settings don't change them:
 
-> **Dale Grant** is kicking up code from `master` to **example.com.au staging**
+```yaml
+slack_deploy:
+  channel: "#deploys"
+  rollback:
+    failed_reply: "<!here> {reason}"
+```
+
+Quote message text: YAML reads a value starting with `{` or `*` as something else.
+
+### Placeholders
+
+| Placeholder | Value |
+| --- | --- |
+| `{user}` | `git config user.name`, falling back to `$GITHUB_ACTOR` |
+| `{branch}` | Branch being deployed (`project_version`), deploys only |
+| `{site}`, `{env}` | Site key and environment |
+| `{url}` | `https://` + the site's first canonical host |
+| `{site_link}` | `{site} {env}` linked to `{url}` |
+| `{commit}`, `{commit_url}`, `{commit_link}` | Short SHA, GitHub commit URL, linked SHA. Set once the deploy has cloned the repo |
+| `{release}` | Release a rollback switched to, e.g. `20261012153012` (the value `--release` takes) |
+| `{ci_url}`, `{ci_link}` | CI run URL, "run" link |
+| `{duration}` | Time since the deploy started |
+| `{details}` | Duration (except on start), commit link and run link, separated by `·` |
+| `{task}`, `{error}`, `{host}` | Failed task, its error and host |
+| `{reason}` | `{task}` and `{error}` as formatted in the default failure reply |
+
+Jinja (`{{ }}`) is rendered first, so Ansible variables work in message text too.
+
+### Defaults
+
+```yaml
+slack_deploy:
+  start: "🟡 *{user}* deploying `{branch}` to *{site_link}* {details}"
+  success: "✅ *{user}* deployed `{branch}` to *{site_link}* {details}"
+  failed: "❌ *{user}* failed deploying `{branch}` to *{site_link}* {details}"
+  cancelled: "⚪ *{user}* cancelled deploying `{branch}` to *{site_link}* {details}"
+  failed_reply: "{reason}"
+  rollback:
+    start: "🟡 *{user}* rolling back *{site_link}* {details}"
+    success: "↩️ *{user}* rolled back *{site_link}* to `{release}` {details}"
+    failed: "❌ *{user}* failed rolling back *{site_link}* {details}"
+    cancelled: "⚪ *{user}* cancelled rolling back *{site_link}* {details}"
+    failed_reply: "{reason}"
+```
+
+## Upgrading from 1.x
+
+1. Set `version: 2.0.0` in `galaxy.yml` and run `trellis galaxy install`
+2. Remove the `deploy_start.yml` and `deploy_success.yml` lines from `deploy_before` and `deploy_after` in `roles/deploy/defaults/main.yml`
+3. Add the `callback_plugins` line to `ansible.cfg`
+4. Set `slack_deploy.channel` and make the bot token available to local and CI deploys (see [Installation](#installation))
+5. Remove `slack_deploy_token` from `vault_wordpress_sites` and any `slack_notify` settings: 2.0 can't post with webhook URLs and doesn't read the 1.x message settings
+
+`CI_JOB_URL` is no longer needed on GitHub Actions, and a separate workflow step for failed deploys can be removed.
 
 ## FAQs
 
-### How do I get a Slack Webhook URL?
+### Why did a cancelled deploy say it failed?
 
-1. Visit the ["Your Apps"](https://api.slack.com/apps) page on Slack
-2. Create an App (e.g. "Deployment alerts") and enable "Incoming Webhooks"
-3. Setup a Webhook for your desired Workspace
-4. Copy the token from the Webhook URL for use in [Installation](#installation)
+ansible-core 2.19 replaces signal handlers each time it starts a task worker, so a cancel reaches Ansible as a task failure. 2.16 to 2.18 and 2.20+ report it as cancelled.
 
-Note: Each Webhook can only post to one channel since Slack changed their API. You will need to set up a webhook per channel you wish to notify.
+## Tests
+
+Runs the plugin against a Trellis-shaped playbook with a local fake Slack API, once per ansible-core install passed in:
+
+```bash
+python3 tests/run.py ~/path/to/site/trellis/.trellis/virtualenv/bin
+```
 
 ## See Also
 
-- [Sending messages using incoming webhooks](https://api.slack.com/messaging/webhooks)
+- [chat.postMessage](https://api.slack.com/methods/chat.postMessage) and [chat.update](https://api.slack.com/methods/chat.update)

@@ -1,12 +1,7 @@
 galaxy_info:
-  description: Sends notifications to Slack before & after deployment via Trellis.
+  description: One Slack message per Trellis deploy or rollback, updated as it succeeds, fails or is cancelled.
   license: MIT
-  min_ansible_version: 2.6
-  platforms:
-  - name: Ubuntu
-    versions:
-    - xenial
-    - bionic
+  min_ansible_version: "2.16"
   galaxy_tags:
     - trellis
     - wordpress

@@ -1,0 +1,89 @@
+---
+# Same flags as Trellis' clone task: no_log hides the result from callbacks.
+- name: Clone project files
+  git:
+    repo: "{{ fixture_repo }}"
+    dest: "{{ playbook_dir }}/build/{{ inventory_hostname }}"
+    version: "{{ project_version }}"
+    force: true
+  ignore_errors: true
+  no_log: true
+  register: git_clone
+
+- name: Clone another repository
+  git:
+    repo: "{{ fixture_other_repo }}"
+    dest: "{{ playbook_dir }}/other/{{ inventory_hostname }}"
+    version: main
+  register: other_clone
+  when: scenario_other_clone | default(false) | bool
+
+- name: Rescued failure
+  when: scenario_rescue | default(false) | bool
+  block:
+    - name: Fails but is rescued
+      command: /bin/false
+  rescue:
+    - name: Rescue
+      debug:
+        msg: rescued
+
+- name: Ignored failure
+  command: /bin/false
+  ignore_errors: true
+  when: scenario_ignore | default(false) | bool
+
+- name: Run composer install
+  shell: echo "Your requirements could not be resolved to an installable set of packages." >&2; exit 2
+  when:
+    - scenario_fail | default(false) | bool
+    - inventory_hostname == fail_host | default(inventory_hostname)
+
+- name: Build assets
+  command: "test {{ item }} != b"
+  loop: [a, b, c]
+  when: scenario_loop_fail | default(false) | bool
+
+- name: Late rescued failure
+  when: scenario_late_rescue | default(false) | bool
+  block:
+    - name: Fails late but is rescued
+      command: /bin/false
+  rescue:
+    - name: Late rescue
+      debug:
+        msg: rescued
+
+- name: Fatal failure with an always section
+  when: scenario_fatal_always | default(false) | bool
+  block:
+    - name: Run migrations
+      shell: echo "Migration 2026_10_13 failed" >&2; exit 1
+  always:
+    - name: Clean up
+      block:
+        - name: Fails in always but is rescued
+          command: /bin/false
+      rescue:
+        - name: Cleanup rescue
+          debug:
+            msg: rescued
+
+- name: Fetch private packages
+  shell: >-
+    echo "fatal: could not read from https://deploy:s3cret-value@github.com/example/private.git" >&2;
+    echo "Authorization: Bearer abc.def.ghi, password=hunter2 token: xoxb-123-456-abcdef" >&2;
+    echo "Authorization: ApiKey k3y-value" >&2;
+    echo '{"db_password": "pa ss w0rd", "access_token": "t0k3n", "password": "esc\"aped-pw"}' >&2;
+    echo "'secret' => 's3c-php'" >&2;
+    exit 1
+  when: scenario_secret | default(false) | bool
+
+- name: Run a no_log task
+  shell: echo "the vault password is v4ult-s3cret" >&2; exit 1
+  no_log: true
+  when: scenario_no_log | default(false) | bool
+
+- name: Wait to be cancelled
+  command: sleep 60
+  when: scenario_sleep | default(false) | bool
