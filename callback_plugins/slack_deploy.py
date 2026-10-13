@@ -37,6 +37,15 @@ ROLLBACK_DEFAULTS = {
 # Ansible's own messages for these say nothing useful, the detail is in stderr/stdout.
 GENERIC_ERRORS = ('non-zero return code', 'MODULE FAILURE', 'One or more items failed')
 ANSI = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
+# Credentials a failed command can print, blanked before its error goes to Slack. no_log tasks never get this far:
+# Ansible hides their result from callbacks.
+SECRETS = (
+    (re.compile(r'(\b[a-z][a-z0-9+.-]*://)[^/\s:@]+:[^/\s@]+@', re.I), r'\1[redacted]@'),
+    (re.compile(r'(\bauthorization:\s*(?:bearer|basic|token)\s+)\S+', re.I), r'\1[redacted]'),
+    (re.compile(r'\b(?:xox[abposr]|xapp)-[A-Za-z0-9-]+'), '[redacted]'),
+    (re.compile(r'\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})'), '[redacted]'),
+    (re.compile(r'(\b(?:password|passwd|secret|token|api[_-]?key)\b\s*[=:]\s*)[\'"]?[^\s\'",;]+', re.I), r'\1[redacted]'),
+)
 GITHUB_REPO = re.compile(r'^(?:git@github\.com:|ssh://git@github\.com/|https://github\.com/)(.+?)(?:\.git)?/?$')
 DOTENV_TOKEN = re.compile(r'^\s*(?:export\s+)?SLACK_DEPLOY_TOKEN\s*=\s*(.*)$')
 
@@ -140,7 +149,8 @@ def _error(result):
         if isinstance(item, Mapping) and (item.get('failed') or 'exception' in item or item.get('rc') not in (None, 0)):
             return _error(item)
 
-    msg = str(result.get('msg') or result.get('reason') or '').strip()
+    # A no_log task's result holds only Ansible's note that its output is hidden.
+    msg = str(result.get('msg') or result.get('reason') or result.get('censored') or '').strip()
     detail = ''
     for key in ('stderr', 'module_stderr', 'stdout', 'module_stdout'):
         if str(result.get(key) or '').strip():
@@ -150,6 +160,8 @@ def _error(result):
     if detail and (not msg or any(generic in msg for generic in GENERIC_ERRORS)):
         msg = '\n'.join(detail.strip().splitlines()[-8:])
     msg = ANSI.sub('', msg).strip() or 'Unknown error'
+    for pattern, replacement in SECRETS:
+        msg = pattern.sub(replacement, msg)
     return msg if len(msg) <= 1500 else '…' + msg[-1500:]
 
 

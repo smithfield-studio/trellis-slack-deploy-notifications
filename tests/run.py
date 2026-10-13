@@ -179,6 +179,18 @@ SCENARIOS = [
         ('update', 'CDEPLOYS', ['❌']),
         ('broadcast', 'CDEPLOYS', ['Failed at *deploy : Run migrations*', 'Migration 2026_10_13 failed']),
     ]},
+    {'name': 'secrets in a failure', 'args': ['-e', 'scenario_secret=true'],
+     'absent': ['s3cret-value', 'abc.def.ghi', 'hunter2', 'xoxb-123-456-abcdef'], 'calls': [
+        ('post', '#deploys', [START]),
+        ('update', 'CDEPLOYS', ['❌']),
+        ('broadcast', 'CDEPLOYS', ['Failed at *deploy : Fetch private packages*', 'https://[redacted]@github.com/example/private.git',
+                                   'Authorization: Bearer [redacted]', 'password=[redacted]', 'token: [redacted]']),
+    ]},
+    {'name': 'no_log failure', 'args': ['-e', 'scenario_no_log=true'], 'absent': ['v4ult-s3cret'], 'calls': [
+        ('post', '#deploys', [START]),
+        ('update', 'CDEPLOYS', ['❌']),
+        ('broadcast', 'CDEPLOYS', ['Failed at *deploy : Run a no_log task*', "'no_log: true'"]),
+    ]},
     {'name': 'failed update off, reply on', 'args': ['-e', 'scenario_fail=true'],
      'config': {'channel': '#deploys', 'failed': False}, 'calls': [
         ('post', '#deploys', [START]),
@@ -340,6 +352,8 @@ def run(bindir, scenario, root, version):
     time.sleep(0.2)
 
     problems = check_calls(expected)
+    problems += [f'{kind(method, body)} {body["channel"]}: contains {secret!r}'
+                 for secret in scenario.get('absent', []) for method, body, _ in CALLS if secret in body['text']]
     warning = scenario.get('warning')
     # ansible-core 2.16 to 2.18 wrap warnings at the terminal width.
     if warning and warning not in ' '.join(output.split()):

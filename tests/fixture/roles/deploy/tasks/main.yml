@@ -69,6 +69,18 @@
           debug:
             msg: rescued
 
+- name: Fetch private packages
+  shell: >-
+    echo "fatal: could not read from https://deploy:s3cret-value@github.com/example/private.git" >&2;
+    echo "Authorization: Bearer abc.def.ghi, password=hunter2 token: xoxb-123-456-abcdef" >&2;
+    exit 1
+  when: scenario_secret | default(false) | bool
+
+- name: Run a no_log task
+  shell: echo "the vault password is v4ult-s3cret" >&2; exit 1
+  no_log: true
+  when: scenario_no_log | default(false) | bool
+
 - name: Wait to be cancelled
   command: sleep 60
   when: scenario_sleep | default(false) | bool
