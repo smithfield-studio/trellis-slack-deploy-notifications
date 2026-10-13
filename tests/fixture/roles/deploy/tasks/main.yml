@@ -74,7 +74,7 @@
     echo "fatal: could not read from https://deploy:s3cret-value@github.com/example/private.git" >&2;
     echo "Authorization: Bearer abc.def.ghi, password=hunter2 token: xoxb-123-456-abcdef" >&2;
     echo "Authorization: ApiKey k3y-value" >&2;
-    echo '{"db_password": "pa ss w0rd", "access_token": "t0k3n"}' >&2;
+    echo '{"db_password": "pa ss w0rd", "access_token": "t0k3n", "password": "esc\"aped-pw"}' >&2;
     echo "'secret' => 's3c-php'" >&2;
     exit 1
   when: scenario_secret | default(false) | bool

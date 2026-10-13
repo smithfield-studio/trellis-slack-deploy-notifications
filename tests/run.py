@@ -180,12 +180,12 @@ SCENARIOS = [
         ('broadcast', 'CDEPLOYS', ['Failed at *deploy : Run migrations*', 'Migration 2026_10_13 failed']),
     ]},
     {'name': 'secrets in a failure', 'args': ['-e', 'scenario_secret=true'],
-     'absent': ['s3cret-value', 'abc.def.ghi', 'hunter2', 'xoxb-123-456-abcdef', 'k3y-value', 'pa ss w0rd', 't0k3n', 's3c-php'], 'calls': [
+     'absent': ['s3cret-value', 'abc.def.ghi', 'hunter2', 'xoxb-123-456-abcdef', 'k3y-value', 'pa ss w0rd', 't0k3n', 's3c-php', 'aped-pw'], 'calls': [
         ('post', '#deploys', [START]),
         ('update', 'CDEPLOYS', ['❌']),
         ('broadcast', 'CDEPLOYS', ['Failed at *deploy : Fetch private packages*', 'https://[redacted]@github.com/example/private.git',
                                    'Authorization: Bearer [redacted]', 'password=[redacted]', 'token: [redacted]',
-                                   'Authorization: ApiKey [redacted]', '"db_password": "[redacted]"', '"access_token": "[redacted]"',
+                                   'Authorization: ApiKey [redacted]', '"db_password": "[redacted]"', '"access_token": "[redacted]"', '"password": "[redacted]"',
                                    "'secret' =&gt; '[redacted]'"]),
     ]},
     {'name': 'no_log failure', 'args': ['-e', 'scenario_no_log=true'], 'absent': ['v4ult-s3cret'], 'calls': [

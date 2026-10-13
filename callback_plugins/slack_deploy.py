@@ -45,8 +45,8 @@ SECRETS = (
     (re.compile(r'(\bauthorization\b["\']?\s*[:=]\s*["\']?(?:[a-z][\w-]*\s+)?)[^\s"\',]+', re.I), r'\1[redacted]'),
     (re.compile(r'\b(?:xox[abposr]|xapp)-[A-Za-z0-9-]+'), '[redacted]'),
     (re.compile(r'\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})'), '[redacted]'),
-    # A quoted value whole, spaces included ("password": "a b", 'secret' => 'c'), then an unquoted one.
-    (re.compile(r'(["\']?\b' + SECRET_KEY + r'\b["\']?\s*(?:=>|[=:])\s*)(["\'])(?:(?!\2).)*\2', re.I), r'\1\2[redacted]\2'),
+    # A quoted value whole, spaces and escaped quotes included ("password": "a \"b", 'secret' => 'c'), then an unquoted one.
+    (re.compile(r'(["\']?\b' + SECRET_KEY + r'\b["\']?\s*(?:=>|[=:])\s*)(["\'])(?:\\.|(?!\2).)*\2', re.I), r'\1\2[redacted]\2'),
     (re.compile(r'(\b' + SECRET_KEY + r'\b["\']?\s*(?:=>|[=:](?!>))\s*)(?!["\'])[^\s"\',;]+', re.I), r'\1[redacted]'),
 )
 GITHUB_REPO = re.compile(r'^(?:git@github\.com:|ssh://git@github\.com/|https://github\.com/)(.+?)(?:\.git)?/?$')
