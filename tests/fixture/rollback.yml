@@ -1,0 +1,17 @@
+---
+# Same play structure as Trellis' rollback.yml.
+- import_playbook: variable-check.yml
+  vars:
+    playbook: rollback.yml
+
+- name: Test Connection
+  hosts: web:&{{ env }}
+  gather_facts: false
+  roles:
+    - connection
+
+- name: Rollback a Deploy
+  hosts: web:&{{ env }}
+  gather_facts: false
+  roles:
+    - rollback

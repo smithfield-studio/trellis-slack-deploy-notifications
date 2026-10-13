@@ -1,0 +1,14 @@
+---
+# The parts of Trellis' rollback role the plugin reads: its failure messages and the new_release_path fact.
+- name: Fail if current release is the oldest available release
+  fail:
+    msg: "Currently symlinked to earliest available release. Cannot rollback. You may manually specify a different release using --extra-vars='release=12345678901234'."
+  when: scenario_oldest | default(false) | bool
+
+- name: Create new_release_path variable
+  set_fact:
+    new_release_path: "/srv/www/{{ site }}/releases/{{ release | default('20261012090000') }}"
+
+- name: Wait to be cancelled
+  command: sleep 60
+  when: scenario_sleep | default(false) | bool

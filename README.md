@@ -1,8 +1,8 @@
 # Trellis Slack Deploy Notifications
 
-Posts one Slack message per [Trellis](https://github.com/roots/trellis) deploy and updates it as the deploy succeeds, fails or is cancelled. Forked from [trellis-slack-webhook-notify-during-deploy](https://github.com/ItinerisLtd/trellis-slack-webhook-notify-during-deploy).
+Posts one Slack message per [Trellis](https://github.com/roots/trellis) deploy or rollback and updates it as it succeeds, fails or is cancelled. Forked from [trellis-slack-webhook-notify-during-deploy](https://github.com/ItinerisLtd/trellis-slack-webhook-notify-during-deploy).
 
-It runs as an Ansible callback plugin rather than deploy hooks, so it sees every task in `deploy.yml`. A failure anywhere (connection test, build, your own hooks, an unreachable host) marks the message as failed and replies in its thread with the task and error.
+It runs as an Ansible callback plugin rather than deploy hooks, so it sees every task in `deploy.yml` and `rollback.yml`. A failure anywhere (connection test, build, your own hooks, an unreachable host) marks the message as failed and replies in its thread with the task and error.
 
 ```
 🟡 Mike Sheppard deploying `main` to example.com production · run
@@ -10,6 +10,7 @@ It runs as an Ansible callback plugin rather than deploy hooks, so it sees every
 ❌ Mike Sheppard failed deploying `main` to example.com production · 48s · run
      ↳ Failed at deploy : Run composer install (also sent to the channel)
 ⚪ Mike Sheppard cancelled deploying `main` to example.com production · 12s
+↩️ Mike Sheppard rolled back example.com production to `20261012153012` · 21s · run
 ```
 
 ## Requirements
@@ -59,10 +60,22 @@ slack_deploy:
   channel: "#deploys"
 ```
 
-Make the bot token available as `SLACK_DEPLOY_TOKEN` wherever deploys run:
+Then make the bot token available to every deploy and rollback, local or CI. Either keep it in the project's vault:
+
+```yaml
+# group_vars/all/vault.yml
+vault_slack_deploy_token: xoxb-...
+
+# group_vars/all/main.yml
+slack_deploy:
+  channel: "#deploys"
+  token: "{{ vault_slack_deploy_token }}"
+```
+
+Or set `SLACK_DEPLOY_TOKEN` wherever Trellis runs:
 
 - GitHub Actions: add a `SLACK_DEPLOY_TOKEN` secret (organisation or repository) and pass it to the deploy step
-- Local deploys: `export SLACK_DEPLOY_TOKEN=xoxb-...` in your shell profile
+- Local deploys and rollbacks: `export SLACK_DEPLOY_TOKEN=xoxb-...` in your shell profile
 
 ```yaml
     - name: Deploy
@@ -71,7 +84,7 @@ Make the bot token available as `SLACK_DEPLOY_TOKEN` wherever deploys run:
       run: trellis deploy production
 ```
 
-Or keep it in the project's vault and set `slack_deploy.token: "{{ vault_slack_deploy_token }}"`.
+Without a token Trellis prints a warning and posts nothing.
 
 ## GitHub Actions / CI
 
@@ -95,6 +108,7 @@ Set `slack_deploy` in `group_vars` (`all` or an environment) and/or per site in 
 | `start` | Text of the message posted when the deploy starts |
 | `success`, `failed`, `cancelled` | Text the message is updated to when the deploy ends |
 | `failed_reply` | Thread reply posted when a deploy fails |
+| `rollback` | Messages for `trellis rollback`: `start`, `success`, `failed`, `cancelled` and `failed_reply`, or `false` to skip rollbacks |
 
 Set any message to `false` to skip it, or `slack_deploy: false` to turn everything off for a site or environment. With `start` off, the end message is posted as a new message.
 
@@ -112,6 +126,15 @@ wordpress_sites:
       failed_reply: "<!here> {reason}"
 ```
 
+Rollbacks use their own messages, so deploy settings don't change them:
+
+```yaml
+slack_deploy:
+  channel: "#deploys"
+  rollback:
+    failed_reply: "<!here> {reason}"
+```
+
 Quote message text: YAML reads a value starting with `{` or `*` as something else.
 
 ### Placeholders
@@ -119,11 +142,12 @@ Quote message text: YAML reads a value starting with `{` or `*` as something els
 | Placeholder | Value |
 | --- | --- |
 | `{user}` | `git config user.name`, falling back to `$GITHUB_ACTOR` |
-| `{branch}` | Branch being deployed (`project_version`) |
+| `{branch}` | Branch being deployed (`project_version`), deploys only |
 | `{site}`, `{env}` | Site key and environment |
 | `{url}` | `https://` + the site's first canonical host |
 | `{site_link}` | `{site} {env}` linked to `{url}` |
 | `{commit}`, `{commit_url}`, `{commit_link}` | Short SHA, GitHub commit URL, linked SHA. Set once the deploy has cloned the repo |
+| `{release}` | Release a rollback switched to, e.g. `20261012153012` (the value `--release` takes) |
 | `{ci_url}`, `{ci_link}` | CI run URL, "run" link |
 | `{duration}` | Time since the deploy started |
 | `{details}` | Duration (except on start), commit link and run link, separated by `·` |
@@ -141,6 +165,12 @@ slack_deploy:
   failed: "❌ *{user}* failed deploying `{branch}` to *{site_link}* {details}"
   cancelled: "⚪ *{user}* cancelled deploying `{branch}` to *{site_link}* {details}"
   failed_reply: "{reason}"
+  rollback:
+    start: "🟡 *{user}* rolling back *{site_link}* {details}"
+    success: "↩️ *{user}* rolled back *{site_link}* to `{release}` {details}"
+    failed: "❌ *{user}* failed rolling back *{site_link}* {details}"
+    cancelled: "⚪ *{user}* cancelled rolling back *{site_link}* {details}"
+    failed_reply: "{reason}"
 ```
 
 ## Upgrading from 1.x
@@ -148,8 +178,8 @@ slack_deploy:
 1. Set `version: 2.0.0` in `galaxy.yml` and run `trellis galaxy install`
 2. Remove the `deploy_start.yml` and `deploy_success.yml` lines from `deploy_before` and `deploy_after` in `roles/deploy/defaults/main.yml`
 3. Add the `callback_plugins` line to `ansible.cfg`
-4. Set `slack_deploy.channel` and make the bot token available (see [Installation](#installation))
-5. Remove `slack_deploy_token` from `vault_wordpress_sites` and any `slack_notify` settings: webhooks and the 1.x message settings are no longer used
+4. Set `slack_deploy.channel` and make the bot token available to local and CI deploys (see [Installation](#installation))
+5. Remove `slack_deploy_token` from `vault_wordpress_sites` and any `slack_notify` settings: 2.0 can't post with webhook URLs and doesn't read the 1.x message settings
 
 `CI_JOB_URL` is no longer needed on GitHub Actions, and a separate workflow step for failed deploys can be removed.
 

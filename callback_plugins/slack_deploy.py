@@ -1,4 +1,4 @@
-# Slack notifications for Trellis deploys: one message per deploy, updated as it starts, succeeds, fails or is cancelled.
+# Slack notifications for Trellis deploys and rollbacks: one message per run, updated as it starts, succeeds, fails or is cancelled.
 # https://github.com/smithfield-studio/trellis-slack-deploy-notifications
 
 import atexit
@@ -15,7 +15,7 @@ from collections.abc import Mapping
 from ansible.plugins.callback import CallbackBase
 from ansible.template import Templar
 
-PLAYBOOKS = ('deploy.yml',)
+PLAYBOOKS = {'deploy.yml': 'deploy', 'rollback.yml': 'rollback'}
 # Overridden by tests/run.py to point at a fake Slack.
 API_URL = os.environ.get('SLACK_DEPLOY_API_URL', 'https://slack.com/api/')
 
@@ -24,6 +24,13 @@ DEFAULTS = {
     'success': '✅ *{user}* deployed `{branch}` to *{site_link}* {details}',
     'failed': '❌ *{user}* failed deploying `{branch}` to *{site_link}* {details}',
     'cancelled': '⚪ *{user}* cancelled deploying `{branch}` to *{site_link}* {details}',
+    'failed_reply': '{reason}',
+}
+ROLLBACK_DEFAULTS = {
+    'start': '🟡 *{user}* rolling back *{site_link}* {details}',
+    'success': '↩️ *{user}* rolled back *{site_link}* to `{release}` {details}',
+    'failed': '❌ *{user}* failed rolling back *{site_link}* {details}',
+    'cancelled': '⚪ *{user}* cancelled rolling back *{site_link}* {details}',
     'failed_reply': '{reason}',
 }
 
@@ -98,7 +105,7 @@ def _error(result):
 
 
 class CallbackModule(CallbackBase):
-    """Posts a Slack message when deploy.yml starts and updates it with the result."""
+    """Posts a Slack message when deploy.yml or rollback.yml starts and updates it with the result."""
 
     CALLBACK_VERSION = 2.0
     CALLBACK_TYPE = 'notification'
@@ -107,7 +114,7 @@ class CallbackModule(CallbackBase):
     def __init__(self, display=None):
         super().__init__(display)
         self._pid = os.getpid()
-        self._active = False
+        self._kind = None
         self._started_at = None
         self._play = None
         self._clone_host = None
@@ -120,11 +127,11 @@ class CallbackModule(CallbackBase):
         self._finished = False
 
     def v2_playbook_on_start(self, playbook):
-        self._active = os.path.basename(playbook._file_name) in PLAYBOOKS
+        self._kind = PLAYBOOKS.get(os.path.basename(playbook._file_name))
         self._started_at = time.time()
 
     def v2_playbook_on_play_start(self, play):
-        if not self._active:
+        if not self._kind:
             return
         self._play = play
         try:
@@ -140,13 +147,17 @@ class CallbackModule(CallbackBase):
         register = _get(result, 'task').register
         if 'git_clone' in (register if isinstance(register, Mapping) else [register]):
             self._clone_host = _get(result, 'host')
+        # The rollback role sets new_release_path to the release it switches to.
+        release = (_get(result, 'result').get('ansible_facts') or {}).get('new_release_path')
+        if release:
+            self._ctx['release'] = os.path.basename(str(release).rstrip('/'))
 
     def v2_runner_on_failed(self, result, ignore_errors=False):
-        if self._active and not ignore_errors:
+        if self._kind and not ignore_errors:
             self._record_failure(result)
 
     def v2_runner_on_unreachable(self, result):
-        if self._active:
+        if self._kind:
             self._record_failure(result)
 
     def v2_playbook_on_stats(self, stats):
@@ -210,8 +221,10 @@ class CallbackModule(CallbackBase):
             'repo_url': f'https://github.com/{repo.group(1)}' if repo else '',
             'ci_url': _ci_url(),
             'commit': '',
+            'release': str(lookup('release') or ''),
         }
         self._config = self._build_config(
+            ROLLBACK_DEFAULTS if self._kind == 'rollback' else DEFAULTS,
             lookup('slack_deploy'),
             lookup('wordpress_sites', site, 'slack_deploy'),
             legacy_token=lookup('vault_wordpress_sites', site, 'slack_deploy_token'),
@@ -227,13 +240,19 @@ class CallbackModule(CallbackBase):
 
         self._notify('start')
 
-    def _build_config(self, *layers, legacy_token=None):
-        config = dict(DEFAULTS, token=None, channel=None)
+    def _build_config(self, defaults, *layers, legacy_token=None):
+        config = dict(defaults, token=None, channel=None)
         for layer in layers:
             if layer is False:
-                config.update(dict.fromkeys(DEFAULTS, False))
+                config.update(dict.fromkeys(defaults, False))
             elif isinstance(layer, Mapping):
-                config.update({key: value for key, value in layer.items() if key in config and value is not None})
+                # Rollback messages live under `rollback`, the top-level ones are for deploys.
+                messages = layer.get('rollback') if self._kind == 'rollback' else layer
+                if messages is False:
+                    messages = dict.fromkeys(defaults, False)
+                config.update({key: value for key, value in layer.items() if key in ('token', 'channel') and value is not None})
+                if isinstance(messages, Mapping):
+                    config.update({key: value for key, value in messages.items() if key in defaults and value is not None})
 
         config['token'] = str(config['token'] or os.environ.get('SLACK_DEPLOY_TOKEN') or '').strip()
         config['channels'] = _as_list(config.pop('channel'))

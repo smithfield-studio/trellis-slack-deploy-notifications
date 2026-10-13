@@ -57,6 +57,7 @@ API = f'http://127.0.0.1:{server.server_port}/api/'
 
 START = '🟡 *Test Deployer* deploying `main` to *<https://example.com|example.com production>*'
 COMMIT = '<https://github.com/smithfield-studio/example/commit/'
+ROLLBACK_START = '🟡 *Test Deployer* rolling back *<https://example.com|example.com production>*'
 
 
 def site(**extra):
@@ -145,6 +146,34 @@ SCENARIOS = [
      'config': {'channel': '#deploys', 'failed': False}, 'calls': [
         ('post', '#deploys', [START]),
         ('broadcast', 'CDEPLOYS', ['Failed at *deploy : Run composer install*']),
+    ]},
+    {'name': 'rollback', 'playbook': 'rollback.yml', 'calls': [
+        ('post', '#deploys', [ROLLBACK_START]),
+        ('update', 'CDEPLOYS', ['↩️ *Test Deployer* rolled back *<https://example.com|example.com production>* to `20261012090000` · ']),
+    ]},
+    {'name': 'rollback to a release', 'playbook': 'rollback.yml', 'args': ['-e', 'release=20261011090000'], 'calls': [
+        ('post', '#deploys', [ROLLBACK_START]),
+        ('update', 'CDEPLOYS', ['to `20261011090000`']),
+    ]},
+    {'name': 'rollback failure', 'playbook': 'rollback.yml', 'args': ['-e', 'scenario_oldest=true'], 'calls': [
+        ('post', '#deploys', [ROLLBACK_START]),
+        ('update', 'CDEPLOYS', ['❌ *Test Deployer* failed rolling back']),
+        ('broadcast', 'CDEPLOYS', ['Failed at *rollback : Fail if current release is the oldest available release*',
+                                   '```Currently symlinked to earliest available release']),
+    ]},
+    {'name': 'rollback cancelled', 'playbook': 'rollback.yml', 'args': ['-e', 'scenario_sleep=true'], 'cancel': signal.SIGINT, 'calls': [
+        ('post', '#deploys', [ROLLBACK_START]),
+        ('update', 'CDEPLOYS', ['⚪ *Test Deployer* cancelled rolling back']),
+    ]},
+    {'name': 'rollback messages', 'playbook': 'rollback.yml',
+     'config': {'channel': '#deploys', 'success': 'Deployed', 'rollback': {'success': 'Back on {release}'}}, 'calls': [
+        ('post', '#deploys', [ROLLBACK_START]),
+        ('update', 'CDEPLOYS', ['Back on 20261012090000']),
+    ]},
+    {'name': 'rollbacks off', 'playbook': 'rollback.yml', 'config': {'channel': '#deploys', 'rollback': False}, 'calls': []},
+    {'name': 'rollbacks off, deploy', 'config': {'channel': '#deploys', 'rollback': False}, 'calls': [
+        ('post', '#deploys', [START]),
+        ('update', 'CDEPLOYS', ['✅']),
     ]},
     {'name': 'disabled for site', 'site': False, 'calls': []},
     {'name': 'no token', 'env': {'SLACK_DEPLOY_TOKEN': ''}, 'warning': 'no Slack bot token', 'calls': []},
