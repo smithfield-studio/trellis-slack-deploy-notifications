@@ -54,6 +54,21 @@
       debug:
         msg: rescued
 
+- name: Fatal failure with an always section
+  when: scenario_fatal_always | default(false) | bool
+  block:
+    - name: Run migrations
+      shell: echo "Migration 2026_10_13 failed" >&2; exit 1
+  always:
+    - name: Clean up
+      block:
+        - name: Fails in always but is rescued
+          command: /bin/false
+      rescue:
+        - name: Cleanup rescue
+          debug:
+            msg: rescued
+
 - name: Wait to be cancelled
   command: sleep 60
   when: scenario_sleep | default(false) | bool

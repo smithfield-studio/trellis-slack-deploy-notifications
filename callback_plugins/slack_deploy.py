@@ -114,6 +114,17 @@ def _op_read(reference):
     return result.stdout.strip()
 
 
+def _rescued(task):
+    """Whether a block's rescue section catches this task's failure: the task, or a block holding it, is in the
+    block section of a block with rescue tasks."""
+    child, parent = task, getattr(task, '_parent', None)
+    while parent is not None:
+        if getattr(parent, 'rescue', None) and any(getattr(t, '_uuid', None) == child._uuid for t in getattr(parent, 'block', None) or []):
+            return True
+        child, parent = parent, getattr(parent, '_parent', None)
+    return False
+
+
 def _ci_url():
     if os.environ.get('CI_JOB_URL'):
         return os.environ['CI_JOB_URL']
@@ -191,7 +202,7 @@ class CallbackModule(CallbackBase):
             self._ctx['release'] = os.path.basename(str(release).rstrip('/'))
 
     def v2_runner_on_failed(self, result, ignore_errors=False):
-        if self._kind and not ignore_errors:
+        if self._kind and not ignore_errors and not _rescued(_get(result, 'task')):
             self._record_failure(result)
 
     def v2_runner_on_unreachable(self, result):
@@ -206,8 +217,10 @@ class CallbackModule(CallbackBase):
         self._finish('failed' if failed_hosts else 'success')
 
     def _record_failure(self, result):
-        # Keep the last per host: an earlier failure may have been rescued, the last is the one that stopped that host.
+        # Keep the first per host: the one that stopped it, rather than an always section's failure after it.
         host = _get(result, 'host').get_name()
+        if host in self._failures:
+            return
         self._failures[host] = {
             'task': _get(result, 'task').get_name().strip(),
             'host': host,

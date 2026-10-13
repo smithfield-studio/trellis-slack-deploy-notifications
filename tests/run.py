@@ -174,6 +174,11 @@ SCENARIOS = [
         ('update', 'CDEPLOYS', ['❌']),
         ('broadcast', 'CDEPLOYS', ['Failed at *deploy : Run composer install*']),
     ]},
+    {'name': 'fatal failure, then a rescued one in always', 'args': ['-e', 'scenario_fatal_always=true'], 'calls': [
+        ('post', '#deploys', [START]),
+        ('update', 'CDEPLOYS', ['❌']),
+        ('broadcast', 'CDEPLOYS', ['Failed at *deploy : Run migrations*', 'Migration 2026_10_13 failed']),
+    ]},
     {'name': 'failed update off, reply on', 'args': ['-e', 'scenario_fail=true'],
      'config': {'channel': '#deploys', 'failed': False}, 'calls': [
         ('post', '#deploys', [START]),
