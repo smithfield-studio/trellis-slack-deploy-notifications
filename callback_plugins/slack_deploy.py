@@ -39,12 +39,15 @@ GENERIC_ERRORS = ('non-zero return code', 'MODULE FAILURE', 'One or more items f
 ANSI = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
 # Credentials a failed command can print, blanked before its error goes to Slack. no_log tasks never get this far:
 # Ansible hides their result from callbacks.
+SECRET_KEY = r'[\w-]*(?:password|passwd|secret|token|api[_-]?key)'
 SECRETS = (
     (re.compile(r'(\b[a-z][a-z0-9+.-]*://)[^/\s:@]+:[^/\s@]+@', re.I), r'\1[redacted]@'),
-    (re.compile(r'(\bauthorization:\s*(?:bearer|basic|token)\s+)\S+', re.I), r'\1[redacted]'),
+    (re.compile(r'(\bauthorization\b["\']?\s*[:=]\s*["\']?(?:[a-z][\w-]*\s+)?)[^\s"\',]+', re.I), r'\1[redacted]'),
     (re.compile(r'\b(?:xox[abposr]|xapp)-[A-Za-z0-9-]+'), '[redacted]'),
     (re.compile(r'\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})'), '[redacted]'),
-    (re.compile(r'(\b(?:password|passwd|secret|token|api[_-]?key)\b\s*[=:]\s*)[\'"]?[^\s\'",;]+', re.I), r'\1[redacted]'),
+    # A quoted value whole, spaces included ("password": "a b", 'secret' => 'c'), then an unquoted one.
+    (re.compile(r'(["\']?\b' + SECRET_KEY + r'\b["\']?\s*(?:=>|[=:])\s*)(["\'])(?:(?!\2).)*\2', re.I), r'\1\2[redacted]\2'),
+    (re.compile(r'(\b' + SECRET_KEY + r'\b["\']?\s*(?:=>|[=:](?!>))\s*)(?!["\'])[^\s"\',;]+', re.I), r'\1[redacted]'),
 )
 GITHUB_REPO = re.compile(r'^(?:git@github\.com:|ssh://git@github\.com/|https://github\.com/)(.+?)(?:\.git)?/?$')
 DOTENV_TOKEN = re.compile(r'^\s*(?:export\s+)?SLACK_DEPLOY_TOKEN\s*=\s*(.*)$')
