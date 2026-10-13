@@ -73,6 +73,15 @@ For local deploys and rollbacks, one `.env` in the folder holding your projects 
 SLACK_DEPLOY_TOKEN=xoxb-...
 ```
 
+Any of the three can be a [1Password secret reference](https://developer.1password.com/docs/cli/secret-references/) instead, so no token is stored on disk and a team shares one item. The plugin reads it with `op read` when a deploy or rollback starts, and 1Password asks for Touch ID when its CLI is locked:
+
+```sh
+# ~/Sites/.env
+SLACK_DEPLOY_TOKEN="op://Shared/Slack Deploy Bot/credential"
+```
+
+This needs the [1Password CLI](https://developer.1password.com/docs/cli/get-started/) (`brew install 1password-cli`) with Settings > Developer > Integrate with 1Password CLI turned on in the 1Password app.
+
 On GitHub Actions, add a `SLACK_DEPLOY_TOKEN` secret (organisation or repository) and pass it to the deploy step:
 
 ```yaml

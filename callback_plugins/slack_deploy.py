@@ -38,7 +38,7 @@ ROLLBACK_DEFAULTS = {
 GENERIC_ERRORS = ('non-zero return code', 'MODULE FAILURE', 'One or more items failed')
 ANSI = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
 GITHUB_REPO = re.compile(r'^(?:git@github\.com:|ssh://git@github\.com/|https://github\.com/)(.+?)(?:\.git)?/?$')
-DOTENV_TOKEN = re.compile(r'^\s*(?:export\s+)?SLACK_DEPLOY_TOKEN\s*=\s*["\']?([^"\'\s#]*)')
+DOTENV_TOKEN = re.compile(r'^\s*(?:export\s+)?SLACK_DEPLOY_TOKEN\s*=\s*(.*)$')
 
 
 def _get(obj, name):
@@ -81,17 +81,37 @@ def _dotenv_token(folder):
     """SLACK_DEPLOY_TOKEN from the nearest .env above the playbook, e.g. one in the folder holding every project."""
     folder = os.path.abspath(folder)
     while True:
+        token = ''
         try:
             with open(os.path.join(folder, '.env'), encoding='utf-8') as env:
                 for line in env:
                     match = DOTENV_TOKEN.match(line)
-                    if match and match.group(1):
-                        return match.group(1)
+                    if match:
+                        value = match.group(1).strip()
+                        quoted = re.match(r'^(["\'])(.*)\1', value)
+                        token = quoted.group(2) if quoted else re.sub(r'\s+#.*$', '', value).strip()
         except OSError:
             pass
+        if token:
+            return token
         if os.path.dirname(folder) == folder:
             return ''
         folder = os.path.dirname(folder)
+
+
+def _op_read(reference):
+    """A 1Password secret reference (op://vault/item/field), read with the 1Password CLI."""
+    try:
+        # 1Password asks for Touch ID when the CLI is locked. No stdin, so op can't sit waiting on a password prompt.
+        result = subprocess.run(['op', 'read', '--no-newline', reference], capture_output=True, text=True,
+                                stdin=subprocess.DEVNULL, timeout=120)
+    except FileNotFoundError:
+        raise ValueError('the 1Password CLI (op) is not installed') from None
+    except subprocess.TimeoutExpired:
+        raise ValueError('no answer from 1Password') from None
+    if result.returncode != 0:
+        raise ValueError(result.stderr.strip() or f'op exited with {result.returncode}')
+    return result.stdout.strip()
 
 
 def _ci_url():
@@ -282,6 +302,14 @@ class CallbackModule(CallbackBase):
         if not config['channels']:
             self._warn('no channel set, add slack_deploy.channel')
             return None
+        if not any(config[key] for key in defaults):
+            return None
+        if config['token'].startswith('op://'):
+            try:
+                config['token'] = _op_read(config['token'])
+            except ValueError as e:
+                self._warn(f"could not read {config['token']} from 1Password ({e})")
+                return None
         if not config['token'].startswith('xox'):
             self._warn('no Slack bot token (xoxb-...), set SLACK_DEPLOY_TOKEN in the environment or a .env above the project, or slack_deploy.token')
             return None

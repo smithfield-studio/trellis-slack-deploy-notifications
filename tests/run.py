@@ -57,6 +57,15 @@ API = f'http://127.0.0.1:{server.server_port}/api/'
 
 START = '🟡 *Test Deployer* deploying `main` to *<https://example.com|example.com production>*'
 COMMIT = '<https://github.com/smithfield-studio/example/commit/'
+OP_REF = 'op://Smithfield/Slack Deploy Bot/credential'
+# Stands in for the 1Password CLI: reads OP_REF only.
+FAKE_OP = f'''#!{sys.executable}
+import sys
+if sys.argv[1:] == ['read', '--no-newline', {OP_REF!r}]:
+    sys.stdout.write({TOKEN!r})
+else:
+    sys.exit(f'[ERROR] could not read secret {{sys.argv[-1]}}: no item found')
+'''
 ROLLBACK_START = '🟡 *Test Deployer* rolling back *<https://example.com|example.com production>*'
 
 
@@ -129,6 +138,15 @@ SCENARIOS = [
         ('post', '#deploys', [START]),
         ('update', 'CDEPLOYS', ['✅']),
     ]},
+    {'name': 'token from 1Password', 'env': {'SLACK_DEPLOY_TOKEN': ''}, 'op': True,
+     'dotenv': f'SLACK_DEPLOY_TOKEN="{OP_REF}"\n', 'calls': [
+        ('post', '#deploys', [START]),
+        ('update', 'CDEPLOYS', ['✅']),
+    ]},
+    {'name': 'missing 1Password item', 'env': {'SLACK_DEPLOY_TOKEN': 'op://Smithfield/Nope/credential'}, 'op': True,
+     'warning': 'could not read op://Smithfield/Nope/credential from 1Password ([ERROR] could not read secret', 'calls': []},
+    {'name': 'no 1Password CLI', 'env': {'SLACK_DEPLOY_TOKEN': OP_REF}, 'op': False,
+     'warning': 'the 1Password CLI (op) is not installed', 'calls': []},
     {'name': 'environment beats a .env', 'dotenv': 'SLACK_DEPLOY_TOKEN=xoxb-other\n', 'calls': [
         ('post', '#deploys', [START]),
         ('update', 'CDEPLOYS', ['✅']),
@@ -257,7 +275,8 @@ def run(bindir, scenario, root, version):
         # 2.19 replaces signal handlers whenever it starts a worker, so the cancel reaches Ansible as a task failure.
         expected = expected[:1] + [('update', 'CDEPLOYS', ['❌']), ('broadcast', 'CDEPLOYS', ['Failed at'])]
 
-    project = root / scenario['name'].replace(' ', '-').replace(',', '').replace('.', '')
+    slug = scenario['name'].replace(' ', '-').replace(',', '').replace('.', '')
+    project = root / slug
     if 'dotenv' in scenario:
         # A .env two folders up, as one in the folder holding every project would be.
         project.mkdir()
@@ -290,6 +309,15 @@ def run(bindir, scenario, root, version):
     env.update({'SLACK_DEPLOY_TOKEN': TOKEN}, **scenario.get('env', {}))
     env.update(ANSIBLE_CALLBACK_PLUGINS=str(PLUGINS), SLACK_DEPLOY_API_URL=API, PYTHONDONTWRITEBYTECODE='1',
                GIT_CONFIG_GLOBAL=str(gitconfig), GIT_CONFIG_NOSYSTEM='1')
+    if 'op' in scenario:
+        # A PATH without the real op, which would ask for Touch ID.
+        env['PATH'] = '/usr/bin:/bin'
+        if scenario['op']:
+            fake_bin = root / f'{slug}-bin'
+            fake_bin.mkdir()
+            (fake_bin / 'op').write_text(FAKE_OP)
+            (fake_bin / 'op').chmod(0o755)
+            env['PATH'] = f'{fake_bin}:/usr/bin:/bin'
 
     CALLS.clear()
     cmd = [str(bindir / 'ansible-playbook'), scenario.get('playbook', 'deploy.yml'), '-e', 'env=production',
@@ -307,7 +335,8 @@ def run(bindir, scenario, root, version):
 
     problems = check_calls(expected)
     warning = scenario.get('warning')
-    if warning and warning not in output:
+    # ansible-core 2.16 to 2.18 wrap warnings at the terminal width.
+    if warning and warning not in ' '.join(output.split()):
         problems.append(f'output is missing the warning {warning!r}')
     for marker in ('Slack deploy notifications', 'Failure using method', 'DEPRECATION'):
         if marker in output and not (warning and marker == 'Slack deploy notifications'):
