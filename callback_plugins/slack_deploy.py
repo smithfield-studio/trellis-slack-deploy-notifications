@@ -293,6 +293,9 @@ class CallbackModule(CallbackBase):
                 if isinstance(messages, Mapping):
                     config.update({key: value for key, value in messages.items() if key in defaults and value is not None})
 
+        # Turned off for this site or environment: nothing to check, even with a token set for every project.
+        if not any(config[key] for key in defaults):
+            return None
         config['token'] = str(config['token'] or os.environ.get('SLACK_DEPLOY_TOKEN') or _dotenv_token(basedir)).strip()
         config['channels'] = _as_list(config.pop('channel'))
         if not config['token'] and not config['channels']:
@@ -301,8 +304,6 @@ class CallbackModule(CallbackBase):
             return None
         if not config['channels']:
             self._warn('no channel set, add slack_deploy.channel')
-            return None
-        if not any(config[key] for key in defaults):
             return None
         if config['token'].startswith('op://'):
             try:

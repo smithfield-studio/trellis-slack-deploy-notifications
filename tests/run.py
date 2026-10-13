@@ -208,6 +208,7 @@ SCENARIOS = [
         ('update', 'CDEPLOYS', ['✅']),
     ]},
     {'name': 'disabled for site', 'site': False, 'calls': []},
+    {'name': 'disabled for environment, token but no channel', 'config': False, 'calls': []},
     {'name': 'no token', 'env': {'SLACK_DEPLOY_TOKEN': ''}, 'warning': 'no Slack bot token', 'calls': []},
     {'name': 'webhook token', 'env': {'SLACK_DEPLOY_TOKEN': 'T000/B000/XXXX'}, 'warning': 'no Slack bot token', 'calls': []},
     {'name': '1.x config only', 'env': {'SLACK_DEPLOY_TOKEN': ''}, 'config': None, 'warning': 'no longer used', 'calls': []},
