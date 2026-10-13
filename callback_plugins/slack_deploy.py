@@ -109,6 +109,8 @@ class CallbackModule(CallbackBase):
         self._pid = os.getpid()
         self._active = False
         self._started_at = None
+        self._play = None
+        self._clone_host = None
         self._ctx = None
         self._config = None
         self._messages = {}  # configured channel: (channel ID, message ts)
@@ -124,6 +126,7 @@ class CallbackModule(CallbackBase):
     def v2_playbook_on_play_start(self, play):
         if not self._active:
             return
+        self._play = play
         try:
             self._load(play)
         except Exception as e:
@@ -132,12 +135,11 @@ class CallbackModule(CallbackBase):
     def v2_runner_on_ok(self, result):
         if not self._ctx:
             return
-        res = _get(result, 'result')
         # Trellis registers its project clone as git_clone; hooks may clone other repos.
         # ansible-core 2.21 holds register as a mapping of names, earlier versions as a string.
         register = _get(result, 'task').register
-        if 'git_clone' in (register if isinstance(register, Mapping) else [register]) and res.get('after'):
-            self._ctx['commit'] = str(res['after'])
+        if 'git_clone' in (register if isinstance(register, Mapping) else [register]):
+            self._clone_host = _get(result, 'host')
 
     def v2_runner_on_failed(self, result, ignore_errors=False):
         if self._active and not ignore_errors:
@@ -269,7 +271,19 @@ class CallbackModule(CallbackBase):
         if self._finished or not self._config:
             return
         self._finished = True
+        self._ctx['commit'] = self._commit()
         self._notify(event)
+
+    def _commit(self):
+        # Read from the registered variable at the end: the clone task is no_log, which hides its result from
+        # callbacks, and ansible-core 2.19+ only registers the variable after the task's callbacks have run.
+        if not self._clone_host:
+            return ''
+        try:
+            hostvars = self._play.get_variable_manager().get_vars(play=self._play, host=self._clone_host)
+            return str((hostvars.get('git_clone') or {}).get('after') or '')
+        except Exception:
+            return ''
 
     def _notify(self, event):
         """Post the deploy's message, or update it if the start was posted, plus a thread reply for failures."""

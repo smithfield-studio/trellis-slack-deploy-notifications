@@ -1,10 +1,13 @@
 ---
+# Same flags as Trellis' clone task: no_log hides the result from callbacks.
 - name: Clone project files
   git:
     repo: "{{ fixture_repo }}"
     dest: "{{ playbook_dir }}/build/{{ inventory_hostname }}"
     version: "{{ project_version }}"
     force: true
+  ignore_errors: true
+  no_log: true
   register: git_clone
 
 - name: Clone another repository
