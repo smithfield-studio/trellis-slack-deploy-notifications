@@ -2,10 +2,18 @@
 - name: Clone project files
   git:
     repo: "{{ fixture_repo }}"
-    dest: "{{ playbook_dir }}/build"
+    dest: "{{ playbook_dir }}/build/{{ inventory_hostname }}"
     version: "{{ project_version }}"
     force: true
   register: git_clone
+
+- name: Clone another repository
+  git:
+    repo: "{{ fixture_other_repo }}"
+    dest: "{{ playbook_dir }}/other/{{ inventory_hostname }}"
+    version: main
+  register: other_clone
+  when: scenario_other_clone | default(false) | bool
 
 - name: Rescued failure
   when: scenario_rescue | default(false) | bool
@@ -24,12 +32,24 @@
 
 - name: Run composer install
   shell: echo "Your requirements could not be resolved to an installable set of packages." >&2; exit 2
-  when: scenario_fail | default(false) | bool
+  when:
+    - scenario_fail | default(false) | bool
+    - inventory_hostname == fail_host | default(inventory_hostname)
 
 - name: Build assets
   command: "test {{ item }} != b"
   loop: [a, b, c]
   when: scenario_loop_fail | default(false) | bool
+
+- name: Late rescued failure
+  when: scenario_late_rescue | default(false) | bool
+  block:
+    - name: Fails late but is rescued
+      command: /bin/false
+  rescue:
+    - name: Late rescue
+      debug:
+        msg: rescued
 
 - name: Wait to be cancelled
   command: sleep 60

@@ -112,6 +112,7 @@ class CallbackModule(CallbackBase):
         self._ctx = None
         self._config = None
         self._messages = {}  # configured channel: (channel ID, message ts)
+        self._failures = {}  # host: last failure
         self._failure = None
         self._interrupted = False
         self._finished = False
@@ -132,7 +133,10 @@ class CallbackModule(CallbackBase):
         if not self._ctx:
             return
         res = _get(result, 'result')
-        if _get(result, 'task').action.split('.')[-1] == 'git' and res.get('after'):
+        # Trellis registers its project clone as git_clone; hooks may clone other repos.
+        # ansible-core 2.21 holds register as a mapping of names, earlier versions as a string.
+        register = _get(result, 'task').register
+        if 'git_clone' in (register if isinstance(register, Mapping) else [register]) and res.get('after'):
             self._ctx['commit'] = str(res['after'])
 
     def v2_runner_on_failed(self, result, ignore_errors=False):
@@ -146,14 +150,16 @@ class CallbackModule(CallbackBase):
     def v2_playbook_on_stats(self, stats):
         if not self._ctx:
             return
-        failed = any(stats.failures.get(h) or stats.dark.get(h) for h in stats.processed)
-        self._finish('failed' if failed else 'success')
+        failed_hosts = [h for h in stats.processed if stats.failures.get(h) or stats.dark.get(h)]
+        self._failure = next((self._failures[h] for h in failed_hosts if h in self._failures), None)
+        self._finish('failed' if failed_hosts else 'success')
 
     def _record_failure(self, result):
-        # Keep the last one: an earlier failure may have been rescued, the last is the one that stopped the deploy.
-        self._failure = {
+        # Keep the last per host: an earlier failure may have been rescued, the last is the one that stopped that host.
+        host = _get(result, 'host').get_name()
+        self._failures[host] = {
             'task': _get(result, 'task').get_name().strip(),
-            'host': _get(result, 'host').get_name(),
+            'host': host,
             'error': _error(_get(result, 'result')),
         }
 
@@ -254,8 +260,9 @@ class CallbackModule(CallbackBase):
     def _on_exit(self):
         # Ansible exited without reaching the stats callback, e.g. a fatal Ansible error.
         if os.getpid() == self._pid:
-            if not self._interrupted and not self._failure:
-                self._failure = {'task': '', 'host': '', 'error': 'Ansible stopped before the deploy finished'}
+            if not self._interrupted:
+                recorded = list(self._failures.values())
+                self._failure = recorded[-1] if recorded else {'task': '', 'host': '', 'error': 'Ansible stopped before the deploy finished'}
             self._finish('cancelled' if self._interrupted else 'failed')
 
     def _finish(self, event):
@@ -266,20 +273,22 @@ class CallbackModule(CallbackBase):
 
     def _notify(self, event):
         """Post the deploy's message, or update it if the start was posted, plus a thread reply for failures."""
-        if self._config[event] is False:
+        message = self._config[event]
+        reply = self._config['failed_reply'] if event == 'failed' else False
+        if not message and not reply:
             return
         try:
-            text = self._render(str(self._config[event]), event)
-            reply = self._render(str(self._config['failed_reply']), event) if event == 'failed' and self._config['failed_reply'] else ''
+            text = self._render(str(message), event) if message else ''
+            reply = self._render(str(reply), event) if reply else ''
         except Exception as e:
             self._warn(f'could not build the {event} message ({e})')
             return
 
         for channel in self._config['channels']:
             posted = self._messages.get(channel)
-            if posted:
+            if text and posted:
                 self._api('chat.update', channel=posted[0], ts=posted[1], text=text)
-            else:
+            elif text:
                 response = self._api('chat.postMessage', channel=channel, text=text, unfurl_links=False, unfurl_media=False)
                 if response:
                     self._messages[channel] = (response['channel'], response['ts'])

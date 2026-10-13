@@ -22,6 +22,7 @@ HERE = Path(__file__).resolve().parent
 PLUGINS = HERE.parent / 'callback_plugins'
 TOKEN = 'xoxb-test-token'
 CALLS = []
+SHAS = {}
 TIMESTAMPS = itertools.count(1)
 
 
@@ -128,6 +129,21 @@ SCENARIOS = [
         ('post', '#deploys', [START + ' · <https://github.com/smithfield-studio/example/actions/runs/123|run>']),
         ('update', 'CDEPLOYS', [COMMIT, '|run>']),
     ]},
+    {'name': 'hook clones another repo', 'args': ['-e', 'scenario_other_clone=true'], 'calls': [
+        ('post', '#deploys', [START]),
+        ('update', 'CDEPLOYS', ['/commit/{main_sha}|']),
+    ]},
+    {'name': 'multi-host failure', 'hosts': 2,
+     'args': ['-e', 'scenario_fail=true', '-e', 'fail_host=web1', '-e', 'scenario_late_rescue=true'], 'calls': [
+        ('post', '#deploys', [START]),
+        ('update', 'CDEPLOYS', ['❌']),
+        ('broadcast', 'CDEPLOYS', ['Failed at *deploy : Run composer install*']),
+    ]},
+    {'name': 'failed update off, reply on', 'args': ['-e', 'scenario_fail=true'],
+     'config': {'channel': '#deploys', 'failed': False}, 'calls': [
+        ('post', '#deploys', [START]),
+        ('broadcast', 'CDEPLOYS', ['Failed at *deploy : Run composer install*']),
+    ]},
     {'name': 'disabled for site', 'site': False, 'calls': []},
     {'name': 'no token', 'env': {'SLACK_DEPLOY_TOKEN': ''}, 'warning': 'no Slack bot token', 'calls': []},
     {'name': 'webhook token', 'env': {'SLACK_DEPLOY_TOKEN': 'T000/B000/XXXX'}, 'warning': 'no Slack bot token', 'calls': []},
@@ -141,16 +157,16 @@ SCENARIOS = [
 ]
 
 
-def make_repo(root):
-    repo = root / 'repo.git'
-    work = root / 'work'
+def make_repo(root, name):
+    repo = root / f'{name}.git'
+    work = root / f'{name}-work'
     git = ['git', '-c', 'user.name=x', '-c', 'user.email=x@x', '-c', 'init.defaultBranch=main']
     subprocess.run(git + ['init', '--bare', '-q', str(repo)], check=True)
     subprocess.run(git + ['init', '-q', str(work)], check=True)
-    (work / 'README').write_text('fixture')
+    (work / 'README').write_text(name)
     for cmd in (['add', '.'], ['commit', '-qm', 'init'], ['branch', 'feature'], ['push', '-q', str(repo), 'main', 'feature']):
         subprocess.run(git + ['-C', str(work)] + cmd, check=True)
-    return repo
+    return subprocess.run(['git', '-C', str(work), 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
 
 
 def write_yaml(path, data):
@@ -175,6 +191,7 @@ def check_calls(expected):
         got_kind = kind(method, body)
         if (got_kind, body['channel']) != (want_kind, want_channel):
             problems.append(f'got {got_kind} {body["channel"]}, expected {want_kind} {want_channel}')
+        substrings = [s.replace('{main_sha}', SHAS['repo']) for s in substrings]
         problems += [f'{got_kind} {body["channel"]}: missing {s!r}' for s in substrings if s not in body['text']]
         ts = body.get('ts') or body.get('thread_ts')
         if ts and posted.get(body['channel']) != ts:
@@ -192,6 +209,13 @@ def run(bindir, scenario, root, version):
 
     project = root / scenario['name'].replace(' ', '-').replace(',', '')
     shutil.copytree(HERE / 'fixture', project)
+    if scenario.get('hosts') == 2:
+        (project / 'hosts/production').write_text(
+            '[production]\n'
+            'web1 ansible_connection=local ansible_python_interpreter="{{ ansible_playbook_python }}"\n'
+            'web2 ansible_connection=local ansible_python_interpreter="{{ ansible_playbook_python }}"\n\n'
+            '[web]\nweb1\nweb2\n'
+        )
 
     wordpress_site = site(**({} if 'site' not in scenario else {'slack_deploy': scenario['site']}))
     write_yaml(project / 'group_vars/production/wordpress_sites.yml', {'wordpress_sites': {'example.com': wordpress_site}})
@@ -214,7 +238,8 @@ def run(bindir, scenario, root, version):
 
     CALLS.clear()
     cmd = [str(bindir / 'ansible-playbook'), scenario.get('playbook', 'deploy.yml'), '-e', 'env=production',
-           '-e', 'site=example.com', '-e', f'fixture_repo={root / "repo.git"}'] + scenario.get('args', [])
+           '-e', 'site=example.com', '-e', f'fixture_repo={root / "repo.git"}',
+           '-e', f'fixture_other_repo={root / "other.git"}'] + scenario.get('args', [])
     proc = subprocess.Popen(cmd, cwd=project, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     if scenario.get('cancel'):
         deadline = time.time() + 60
@@ -243,13 +268,14 @@ def main():
     failures = 0
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
-        make_repo(root)
+        SHAS.update(repo=make_repo(root, 'repo'), other=make_repo(root, 'other'))
         for bindir in bindirs:
             version = subprocess.run([str(bindir / 'ansible'), '--version'], capture_output=True, text=True).stdout.splitlines()[0]
             print(f'\n{version}')
             version_root = root / version.replace(' ', '_')
             version_root.mkdir()
-            (version_root / 'repo.git').symlink_to(root / 'repo.git')
+            for repo in ('repo.git', 'other.git'):
+                (version_root / repo).symlink_to(root / repo)
             for scenario in SCENARIOS:
                 problems, output = run(bindir, scenario, version_root, version)
                 print(f'  {"FAIL" if problems else "ok  "} {scenario["name"]}')
